@@ -8,8 +8,9 @@
 #include <raylib.h>
 
 #include "nn.h"
+#include "matrix.h"
 
-#define NUM_CARS        (40)
+#define NUM_CARS        (160)
 #define W_MAX           (3.0f)
 #define W_MIN           (-3.0f)
 #define V_MIN           (20.0f)
@@ -18,6 +19,7 @@
 #define MAX_STEPS       ((size_t) (SIGHT_DISTANCE / EPSILON))
 #define SCREEN_WIDTH    (1920)
 #define SCREEN_HEIGHT   (1080)
+#define NUM_RAYS        (19)
 
 #define TIMEOUT         (30.0f)
 
@@ -58,7 +60,7 @@ static float dt;
 
 void calculate_distances(float *distances, car_t car) {
     float rayDirection = -(PI/2);
-    for (int ray = 0; ray < 5; ++ray) {
+    for (int ray = 0; ray < NUM_RAYS; ++ray) {
         float rayAngle = car.dir + rayDirection;
         float x = car.pos.x;
         float y = car.pos.y;
@@ -75,7 +77,7 @@ void calculate_distances(float *distances, car_t car) {
         }
         distances[ray] = (steps * EPSILON) / SIGHT_DISTANCE;
         //DrawLine((int) car.pos.x, (int) car.pos.y, (int) x, (int) y, GREEN);
-        rayDirection += (PI/4);
+        rayDirection += (PI/(NUM_RAYS-1));
     }
 }
 
@@ -120,7 +122,7 @@ int cmp_info(const void *a, const void *b) {
 }
 
 void grade_car_performance(car_t *cars, size_t num_cars, size_t *sorted_indexes) {
-    car_info_t *infos = malloc(sizeof(car_info_t) * num_cars);
+    car_info_t *infos = (car_info_t *) malloc(sizeof(car_info_t) * num_cars);
     for (size_t i = 0; i < num_cars; ++i) {
         Vector2 pos = screen_to_cartesian(cars[i].pos);
         float theta = atan2f(pos.y, pos.x);
@@ -219,7 +221,7 @@ int main(void) {
     srand(clock());
 
     nn_t *nns[NUM_CARS];
-    size_t layer_sizes[4] = {5, 512, 512, 2};
+    size_t layer_sizes[4] = {NUM_RAYS, 512, 512, 16};
 
 
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "race");
@@ -236,11 +238,10 @@ int main(void) {
         pthread_mutex_init(&locks[i], NULL);
     }
     pthread_t driver_thread;
-    gen_thread_ctx_t ctx = {
-        .cars = cars,
-        .nns = nns,
-        .locks = locks,
-    };
+    gen_thread_ctx_t ctx;
+    ctx.cars = cars;
+    ctx.nns = nns;
+    ctx.locks = locks;
     pthread_create(&driver_thread, NULL, gen_thread, (void*) &ctx);
     dt = 1.0f / targetFPS;
     while(!WindowShouldClose()) {
@@ -261,12 +262,11 @@ int main(void) {
         bool kill = IsKeyPressed(KEY_SPACE);
         for (size_t i = 0; i < NUM_CARS; ++i) {
             if (kill) cars[i].crashed = true;
-            Rectangle car_shape = {
-                .height = 10,
-                .width = 10,
-                .x = cars[i].pos.x-5,
-                .y = cars[i].pos.y-5
-            };
+            Rectangle car_shape;
+            car_shape.height = 10;
+            car_shape.width = 10;
+            car_shape.x = cars[i].pos.x-5;
+            car_shape.y = cars[i].pos.y-5;
             DrawRectangleRec(car_shape, RED);
         }
         time_elapsed += dt;

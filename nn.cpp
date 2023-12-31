@@ -61,11 +61,3 @@ void nn_delete(nn_t *me) {
     free(me);
 }
 
-void nn_forward(nn_t *nn) {
-    for (size_t i = 1; i < nn->num_layers; ++i) {
-        matrix_multiply(nn->layers[i].weights, nn->layers[i - 1].a, nn->layers[i].a);
-        matrix_add(nn->layers[i].a, nn->layers[i].biases, nn->layers[i].a);
-        matrix_sigmoid(nn->layers[i].a);
-    }
-}
-

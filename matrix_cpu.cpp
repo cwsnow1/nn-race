@@ -3,10 +3,11 @@
 #include <math.h>
 
 #include "matrix.h"
-
+#include "nn.h"
+#ifdef MATRIX_CPU
 
 matrix_t *matrix_make(int rows, int cols) {
-    matrix_t *m = malloc(sizeof(matrix_t));
+    matrix_t *m = (matrix_t*) malloc(sizeof(matrix_t));
     m->cols = cols;
     m->rows = rows;
     m->data = (float*) malloc(sizeof(float) * rows * cols);
@@ -51,7 +52,7 @@ void matrix_sigmoid(matrix_t *a) {
 
 void matrix_randomize(matrix_t *m) {
     for (size_t i = 0; i < m->rows * m->cols; ++i) {
-        m->data[i] = (((float) rand() / RAND_MAX) * 2.0f) - 1.0f;
+        m->data[i] = (((float) rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
     }
 }
 
@@ -64,7 +65,7 @@ void matrix_average(matrix_t *a, matrix_t *b, matrix_t *c) {
     assert(c->rows == a->rows);
     assert(c->cols == a->cols);
     for (size_t i = 0; i < a->rows * a->cols; ++i) {
-        float mutation = ((((float) rand() / RAND_MAX) * 2.0f) - 1.0f) * MUTATION_MAX;
+        float mutation = ((((float) rand() / (float) RAND_MAX) * 2.0f) - 1.0f) * MUTATION_MAX;
         c->data[i] = (a->data[i] + b->data[i]) / 2.0f + mutation;
     }
 }
@@ -74,3 +75,12 @@ void matrix_delete(matrix_t *m) {
     free(m->data);
     free(m);
 }
+
+void nn_forward(struct nn_s *nn) {
+    for (size_t i = 1; i < nn->num_layers; ++i) {
+        matrix_multiply(nn->layers[i].weights, nn->layers[i - 1].a, nn->layers[i].a);
+        matrix_add(nn->layers[i].a, nn->layers[i].biases, nn->layers[i].a);
+        matrix_sigmoid(nn->layers[i].a);
+    }
+}
+#endif
