@@ -248,6 +248,16 @@ int main(void) {
         if (IsTextureReady(track)) {
             DrawTexture(track, 0, 0, WHITE);
         }
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) || IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+            Color color = IsMouseButtonDown(MOUSE_BUTTON_LEFT) ? WHITE : BLACK;
+            Vector2 mouse_pos = GetMousePosition();
+            int x = (int) mouse_pos.x;
+            int y = (int) mouse_pos.y;
+            ImageDrawCircle(&track_image, x, y, 10, color);
+            UpdateTexture(track, track_image.data);
+            UnloadImageColors(track_colors);
+            track_colors = LoadImageColors(track_image);
+        }
         bool kill = IsKeyPressed(KEY_SPACE);
         for (size_t i = 0; i < NUM_CARS; ++i) {
             if (kill) cars[i].crashed = true;
