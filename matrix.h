@@ -5,6 +5,8 @@
 
 #define MATRIX_CPU
 
+#define MUTATION_MAX    (0.01f)
+
 typedef struct matrix_s {
     float *data;
     float *gpuData;

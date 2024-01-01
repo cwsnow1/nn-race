@@ -56,8 +56,6 @@ void matrix_randomize(matrix_t *m) {
     }
 }
 
-#define MUTATION_MAX    (0.02f)
-
 void matrix_average(matrix_t *a, matrix_t *b, matrix_t *c) {
     assert(a && b && c);
     assert(a->cols == b->cols);

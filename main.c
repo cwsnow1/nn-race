@@ -35,7 +35,7 @@
 #endif
 
 #define NUM_RAYS                (19)
-#define NUM_TRACKS              (6)
+#define NUM_TRACKS              (7)
 #define INPUT_LAYER_SIZE        (NUM_RAYS + STEERING_INPUT_LAYER + SPEED_INPUT_LAYER)
 #define OUTPUT_LAYER_SIZE       (1 + SPEED_INPUT_LAYER)
 
@@ -75,6 +75,7 @@ static Image track_image;
 static float time_elapsed = 0.0f;
 static float dt;
 static volatile bool next = false;
+static volatile bool quit = false;
 
 void calculate_distances(float *distances, car_t car) {
     float rayDirection = -(PI/2);
@@ -162,7 +163,6 @@ void *drive_car(void *ctx) {
     drive_thread_ctx_t *thread_ctx = (drive_thread_ctx_t*) ctx;
     nn_t *nn = thread_ctx->nn;
     car_t *car = thread_ctx->car;
-    //pthread_mutex_t *lock = thread_ctx->lock;
 
     while (!(car->crashed || car->finished)) {
         calculate_distances(nn->layers[0].a->data, *car);
@@ -170,7 +170,7 @@ void *drive_car(void *ctx) {
         nn->layers[0].a->data[nn->layers[0].a->rows - 1] = car->v / V_MAX;
 #endif
 #if (STEERING == 1)
-        nn->layers[0].a->data[nn->layers[0].a->rows - 1 - SPEED_INPUT_LAYER] = car->w; /// W_MAX;
+        nn->layers[0].a->data[nn->layers[0].a->rows - 1 - SPEED_INPUT_LAYER] = car->w;// W_MAX;
 #endif
         nn_forward(nn);
 #if (STEERING == 1)
@@ -191,10 +191,8 @@ void *drive_car(void *ctx) {
             car->v = V_MAX;
         }
 #endif
-        //pthread_mutex_lock(lock);
         car->pos.x += car->v * cosf(car->dir) * dt;
         car->pos.y += car->v * sinf(car->dir) * dt;
-        //pthread_mutex_unlock(lock);
         Color pixel_color = track_colors[(size_t) car->pos.y * track_image.width + (size_t)car->pos.x];
         if (pixel_color.r < 10) {
             car->crashed = true;
@@ -221,6 +219,7 @@ void *gen_thread(void* c) {
     pthread_mutex_t *locks = ctx->locks;
     drive_thread_ctx_t ctxs[NUM_CARS];
     pthread_t threads[NUM_CARS];
+    size_t iterations = 0;
     for (;;) {
         while (next);
         init_cars(cars, NUM_CARS);
@@ -245,10 +244,14 @@ void *gen_thread(void* c) {
             nn_delete(nns[i]);
             nns[i] = new_nns[i];
         }
-        pthread_mutex_lock(&locks[0]);
         next = true;
-        pthread_mutex_unlock(&locks[0]);
+        if (iterations++ > SIZE_MAX) {
+            quit = true;
+            pthread_exit(NULL);
+        }
     }
+    // unreachable
+    return NULL;
 }
 
 
@@ -257,6 +260,7 @@ int main(void) {
 
     nn_t *nns[NUM_CARS];
     size_t layer_sizes[5] = {INPUT_LAYER_SIZE, 512, 512, 256, OUTPUT_LAYER_SIZE};
+    char buffer[256];
 
 
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "race");
@@ -267,7 +271,6 @@ int main(void) {
     Color *track_colors_arr[NUM_TRACKS];
     Texture2D tracks[NUM_TRACKS];
     for (size_t i = 0; i < NUM_TRACKS; ++i) {
-        char buffer[32];
         sprintf(buffer, "track%zu.png", i + 1);
         track_images[i] = LoadImage(buffer);
         track_colors_arr[i] = LoadImageColors(track_images[i]);
@@ -278,7 +281,6 @@ int main(void) {
     track = tracks[track_num];
     track_colors = track_colors_arr[track_num];
     car_t cars[NUM_CARS];
-    char buffer[256];
     pthread_mutex_t locks[NUM_CARS];
     for (size_t i = 0; i < NUM_CARS; ++i) {
         nns[i] = nn_init(4, layer_sizes);
@@ -292,7 +294,6 @@ int main(void) {
     pthread_create(&driver_thread, NULL, gen_thread, (void*) &ctx);
     dt = 1.0f / targetFPS;
     while(!WindowShouldClose()) {
-        pthread_mutex_lock(&locks[0]);
         if (next) {
             track_num = rand() % NUM_TRACKS;
             track_image = track_images[track_num];
@@ -300,7 +301,9 @@ int main(void) {
             track_colors = track_colors_arr[track_num];
             next = false;
         }
-        pthread_mutex_unlock(&locks[0]);
+        if (quit) {
+            break;
+        }
 
         BeginDrawing();
         if (IsTextureReady(track)) {
@@ -319,11 +322,12 @@ int main(void) {
         bool kill = IsKeyPressed(KEY_SPACE);
         for (size_t i = 0; i < NUM_CARS; ++i) {
             if (kill) cars[i].crashed = true;
-            Rectangle car_shape;
-            car_shape.height = 10;
-            car_shape.width = 10;
-            car_shape.x = cars[i].pos.x-5;
-            car_shape.y = cars[i].pos.y-5;
+            Rectangle car_shape = {
+                .height = 10,
+                .width = 10,
+                .x = cars[i].pos.x-5,
+                .y = cars[i].pos.y-5,
+            };
             DrawRectangleRec(car_shape, RED);
         }
         time_elapsed += dt;
@@ -331,6 +335,8 @@ int main(void) {
         DrawText(buffer, 0, 900, 24, RED);
         EndDrawing();
     }
+
+    CloseWindow();
 
     return 0;
 }
