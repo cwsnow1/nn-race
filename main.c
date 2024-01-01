@@ -10,18 +10,34 @@
 #include "nn.h"
 #include "matrix.h"
 
-#define NUM_CARS        (160)
-#define W_MAX           (3.0f)
-#define W_MIN           (-3.0f)
-#define V_MIN           (20.0f)
-#define SIGHT_DISTANCE  (200.0f)
-#define EPSILON         (0.2f)
-#define MAX_STEPS       ((size_t) (SIGHT_DISTANCE / EPSILON))
-#define SCREEN_WIDTH    (1920)
-#define SCREEN_HEIGHT   (1080)
-#define NUM_RAYS        (19)
+#define CONTROL_SPEED   (1)
+#define STEERING        (1)
 
-#define TIMEOUT         (30.0f)
+#define NUM_CARS                (20)
+#define SIGHT_DISTANCE          (100.0f)
+#define EPSILON                 (0.2f)
+#define MAX_STEPS               ((size_t) (SIGHT_DISTANCE / EPSILON))
+#define SCREEN_WIDTH            (1920)
+#define SCREEN_HEIGHT           (1080)
+#if (STEERING == 1)
+#define STEERING_INPUT_LAYER    (1)
+#define W_MAX                   (3.0f)
+#define W_MIN                   (-W_MAX)
+#else
+#define STEERING_INPUT_LAYER    (0)
+#endif
+#if (CONTROL_SPEED == 1)
+#define SPEED_INPUT_LAYER       (1)
+#define V_MIN                   (10.0)
+#define V_MAX                   (60.0f)
+#else
+#define SPEED_INPUT_LAYER       (0)
+#endif
+
+#define NUM_RAYS                (19)
+#define NUM_TRACKS              (6)
+#define INPUT_LAYER_SIZE        (NUM_RAYS + STEERING_INPUT_LAYER + SPEED_INPUT_LAYER)
+#define OUTPUT_LAYER_SIZE       (1 + SPEED_INPUT_LAYER)
 
 typedef struct {
     Vector2 pos;
@@ -53,14 +69,16 @@ typedef struct {
     pthread_mutex_t *locks;
 } gen_thread_ctx_t;
 
+static Texture2D track;
 static Color *track_colors;
 static Image track_image;
 static float time_elapsed = 0.0f;
 static float dt;
+static volatile bool next = false;
 
 void calculate_distances(float *distances, car_t car) {
     float rayDirection = -(PI/2);
-    for (int ray = 0; ray < NUM_RAYS; ++ray) {
+    for (size_t ray = 0; ray < NUM_RAYS; ++ray) {
         float rayAngle = car.dir + rayDirection;
         float x = car.pos.x;
         float y = car.pos.y;
@@ -76,8 +94,7 @@ void calculate_distances(float *distances, car_t car) {
             }
         }
         distances[ray] = (steps * EPSILON) / SIGHT_DISTANCE;
-        //DrawLine((int) car.pos.x, (int) car.pos.y, (int) x, (int) y, GREEN);
-        rayDirection += (PI/(NUM_RAYS-1));
+        rayDirection += (PI/(float)(NUM_RAYS-1));
     }
 }
 
@@ -149,17 +166,31 @@ void *drive_car(void *ctx) {
 
     while (!(car->crashed || car->finished)) {
         calculate_distances(nn->layers[0].a->data, *car);
+#if (CONTROL_SPEED == 1)
+        nn->layers[0].a->data[nn->layers[0].a->rows - 1] = car->v / V_MAX;
+#endif
+#if (STEERING == 1)
+        nn->layers[0].a->data[nn->layers[0].a->rows - 1 - SPEED_INPUT_LAYER] = car->w; /// W_MAX;
+#endif
         nn_forward(nn);
-        car->w = (nn->layers[nn->num_layers - 1].a->data[0]);
+#if (STEERING == 1)
+        car->w += (nn->layers[nn->num_layers - 1].a->data[0]) * dt;
         if (car->w > W_MAX) {
             car->w = W_MAX;
         } else if (car->w < W_MIN) {
             car->w = W_MIN;
         }
+#else
+        car->w = (nn->layers[nn->num_layers - 1].a->data[0]);
+#endif
+#if (CONTROL_SPEED == 1)
         car->v += (nn->layers[nn->num_layers - 1].a->data[1]) * dt;
         if (car->v < V_MIN) {
             car->v = V_MIN;
+        } else if (car->v > V_MAX) {
+            car->v = V_MAX;
         }
+#endif
         //pthread_mutex_lock(lock);
         car->pos.x += car->v * cosf(car->dir) * dt;
         car->pos.y += car->v * sinf(car->dir) * dt;
@@ -191,6 +222,7 @@ void *gen_thread(void* c) {
     drive_thread_ctx_t ctxs[NUM_CARS];
     pthread_t threads[NUM_CARS];
     for (;;) {
+        while (next);
         init_cars(cars, NUM_CARS);
         time_elapsed = 0.0f;
         for (size_t i = 0; i < NUM_CARS; ++i) {
@@ -213,6 +245,9 @@ void *gen_thread(void* c) {
             nn_delete(nns[i]);
             nns[i] = new_nns[i];
         }
+        pthread_mutex_lock(&locks[0]);
+        next = true;
+        pthread_mutex_unlock(&locks[0]);
     }
 }
 
@@ -221,15 +256,27 @@ int main(void) {
     srand(clock());
 
     nn_t *nns[NUM_CARS];
-    size_t layer_sizes[4] = {NUM_RAYS, 512, 512, 16};
+    size_t layer_sizes[5] = {INPUT_LAYER_SIZE, 512, 512, 256, OUTPUT_LAYER_SIZE};
 
 
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "race");
     const int targetFPS = 144;
     SetTargetFPS(targetFPS);
-    Texture2D track = LoadTexture("track.png");
-    track_image = LoadImage("track.png");
-    track_colors = LoadImageColors(track_image);
+
+    Image track_images[NUM_TRACKS];
+    Color *track_colors_arr[NUM_TRACKS];
+    Texture2D tracks[NUM_TRACKS];
+    for (size_t i = 0; i < NUM_TRACKS; ++i) {
+        char buffer[32];
+        sprintf(buffer, "track%zu.png", i + 1);
+        track_images[i] = LoadImage(buffer);
+        track_colors_arr[i] = LoadImageColors(track_images[i]);
+        tracks[i] = LoadTextureFromImage(track_images[i]);
+    }
+    int track_num = 0;
+    track_image = track_images[track_num];
+    track = tracks[track_num];
+    track_colors = track_colors_arr[track_num];
     car_t cars[NUM_CARS];
     char buffer[256];
     pthread_mutex_t locks[NUM_CARS];
@@ -245,6 +292,16 @@ int main(void) {
     pthread_create(&driver_thread, NULL, gen_thread, (void*) &ctx);
     dt = 1.0f / targetFPS;
     while(!WindowShouldClose()) {
+        pthread_mutex_lock(&locks[0]);
+        if (next) {
+            track_num = rand() % NUM_TRACKS;
+            track_image = track_images[track_num];
+            track = tracks[track_num];
+            track_colors = track_colors_arr[track_num];
+            next = false;
+        }
+        pthread_mutex_unlock(&locks[0]);
+
         BeginDrawing();
         if (IsTextureReady(track)) {
             DrawTexture(track, 0, 0, WHITE);
