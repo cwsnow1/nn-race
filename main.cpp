@@ -2,8 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
-#include <pthread.h>
-#include <unistd.h>
+#include <thread>
 
 #include <raylib.h>
 
@@ -62,13 +61,11 @@ typedef struct {
 typedef struct {
     nn_t *nn;
     car_t *car;
-    //pthread_mutex_t *lock;
 } drive_thread_ctx_t;
 
 typedef struct {
     nn_t **nns;
     car_t *cars;
-    //pthread_mutex_t *locks;
 } gen_thread_ctx_t;
 
 static Texture2D track;
@@ -210,7 +207,6 @@ void *drive_car(void *ctx) {
         }
         car->dir += car->w * dt;
     }
-    pthread_exit(NULL);
     return NULL;
 }
 
@@ -218,9 +214,8 @@ void *gen_thread(void* c) {
     gen_thread_ctx_t *ctx = (gen_thread_ctx_t *)c;
     nn_t **nns = ctx->nns;
     car_t *cars = ctx->cars;
-    //pthread_mutex_t *locks = ctx->locks;
     drive_thread_ctx_t ctxs[NUM_GROUPS][NUM_CARS];
-    pthread_t threads[NUM_GROUPS][NUM_CARS];
+    std::thread threads[NUM_GROUPS][NUM_CARS];
     size_t iterations = 0;
     for (;;) {
         while (next);
@@ -231,13 +226,12 @@ void *gen_thread(void* c) {
             for (size_t i = 0; i < NUM_CARS; ++i) {
                 ctxs[group][i].nn = nns[group_offset + i];
                 ctxs[group][i].car = &cars[group_offset + i];
-                //ctxs[i].lock = &locks[i];
-                pthread_create(&threads[group][i], NULL, drive_car, (void*) &ctxs[group][i]);
+                threads[group][i] = std::thread(drive_car, (void*) &ctxs[group][i]);
             }
         }
         for (size_t group = 0; group < NUM_GROUPS; ++group) {
             for (size_t i = 0; i < NUM_CARS; ++i) {
-                pthread_join(threads[group][i], NULL);
+                threads[group][i].join();
             }
         }
         size_t sorted_indexes[NUM_GROUPS][NUM_CARS];
@@ -257,10 +251,9 @@ void *gen_thread(void* c) {
         next = true;
         if (iterations++ > SIZE_MAX) {
             quit = true;
-            pthread_exit(NULL);
+            break;
         }
     }
-    // unreachable
     return NULL;
 }
 
@@ -295,19 +288,17 @@ int main(void) {
     track = tracks[track_num];
     track_colors = track_colors_arr[track_num];
     car_t cars[NUM_GROUPS][NUM_CARS];
-    //pthread_mutex_t locks[NUM_GROUPS][NUM_CARS];
     for (size_t group = 0; group < NUM_GROUPS; ++group) {
         for (size_t i = 0; i < NUM_CARS; ++i) {
             nns[group][i] = nn_init(NUM_LAYERS, layer_sizes[group]);
-            //pthread_mutex_init(&locks[i], NULL);
         }
     }
-    pthread_t driver_thread;
+
     gen_thread_ctx_t ctx;
     ctx.cars = (car_t*) cars;
     ctx.nns = (nn_t**) nns;
     //ctx.locks = locks;
-    pthread_create(&driver_thread, NULL, gen_thread, (void*) &ctx);
+    std::thread driver_thread = std::thread(gen_thread, (void*) &ctx);
     dt = 1.0f / targetFPS;
     while(!WindowShouldClose()) {
         if (next) {
@@ -339,12 +330,11 @@ int main(void) {
         for (size_t group = 0; group < NUM_GROUPS; ++group) {
             for (size_t i = 0; i < NUM_CARS; ++i) {
                 if (kill) cars[group][i].crashed = true;
-                Rectangle car_shape = {
-                    .height = 10,
-                    .width = 10,
-                    .x = cars[group][i].pos.x-5,
-                    .y = cars[group][i].pos.y-5,
-                };
+                Rectangle car_shape;
+                car_shape.x = cars[group][i].pos.x-5;
+                car_shape.y = cars[group][i].pos.y-5;
+                car_shape.width = 10;
+                car_shape.height = 10;
                 DrawRectangleRec(car_shape, group_colors[group]);
             }
         }
@@ -354,6 +344,7 @@ int main(void) {
         EndDrawing();
     }
 
+    driver_thread.join();
     CloseWindow();
 
     return 0;
