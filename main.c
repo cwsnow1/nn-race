@@ -11,9 +11,11 @@
 #include "matrix.h"
 
 #define CONTROL_SPEED   (1)
-#define STEERING        (1)
+#define STEERING        (0)
 
 #define NUM_CARS                (20)
+#define NUM_LAYERS              (5)
+#define NUM_GROUPS              (2)
 #define SIGHT_DISTANCE          (100.0f)
 #define EPSILON                 (0.2f)
 #define MAX_STEPS               ((size_t) (SIGHT_DISTANCE / EPSILON))
@@ -60,13 +62,13 @@ typedef struct {
 typedef struct {
     nn_t *nn;
     car_t *car;
-    pthread_mutex_t *lock;
+    //pthread_mutex_t *lock;
 } drive_thread_ctx_t;
 
 typedef struct {
-    nn_t** nns;
+    nn_t **nns;
     car_t *cars;
-    pthread_mutex_t *locks;
+    //pthread_mutex_t *locks;
 } gen_thread_ctx_t;
 
 static Texture2D track;
@@ -216,33 +218,41 @@ void *gen_thread(void* c) {
     gen_thread_ctx_t *ctx = (gen_thread_ctx_t *)c;
     nn_t **nns = ctx->nns;
     car_t *cars = ctx->cars;
-    pthread_mutex_t *locks = ctx->locks;
-    drive_thread_ctx_t ctxs[NUM_CARS];
-    pthread_t threads[NUM_CARS];
+    //pthread_mutex_t *locks = ctx->locks;
+    drive_thread_ctx_t ctxs[NUM_GROUPS][NUM_CARS];
+    pthread_t threads[NUM_GROUPS][NUM_CARS];
     size_t iterations = 0;
     for (;;) {
         while (next);
-        init_cars(cars, NUM_CARS);
-        time_elapsed = 0.0f;
-        for (size_t i = 0; i < NUM_CARS; ++i) {
-            ctxs[i].nn = nns[i];
-            ctxs[i].car = &cars[i];
-            ctxs[i].lock = &locks[i];
-            pthread_create(&threads[i], NULL, drive_car, (void*) &ctxs[i]);
+        for (size_t group = 0; group < NUM_GROUPS; ++group) {
+            size_t group_offset = NUM_CARS * group;
+            init_cars(cars + group_offset, NUM_CARS);
+            time_elapsed = 0.0f;
+            for (size_t i = 0; i < NUM_CARS; ++i) {
+                ctxs[group][i].nn = nns[group_offset + i];
+                ctxs[group][i].car = &cars[group_offset + i];
+                //ctxs[i].lock = &locks[i];
+                pthread_create(&threads[group][i], NULL, drive_car, (void*) &ctxs[group][i]);
+            }
         }
-        for (size_t i = 0; i < NUM_CARS; ++i) {
-            pthread_join(threads[i], NULL);
+        for (size_t group = 0; group < NUM_GROUPS; ++group) {
+            for (size_t i = 0; i < NUM_CARS; ++i) {
+                pthread_join(threads[group][i], NULL);
+            }
         }
-        size_t sorted_indexes[NUM_CARS];
-        nn_t *new_nns[NUM_CARS];
-        grade_car_performance(cars, NUM_CARS, sorted_indexes);
-        for (size_t i = 0; i < NUM_CARS; ++i) {
-            size_t half = NUM_CARS / 2;
-            new_nns[i] = nn_average(nns[sorted_indexes[i/half]], nns[sorted_indexes[i%half]]);
-        }
-        for (size_t i = 0; i < NUM_CARS; ++i) {
-            nn_delete(nns[i]);
-            nns[i] = new_nns[i];
+        size_t sorted_indexes[NUM_GROUPS][NUM_CARS];
+        nn_t *new_nns[NUM_GROUPS][NUM_CARS];
+        for (size_t group = 0; group < NUM_GROUPS; ++group) {
+            size_t group_offset = NUM_CARS * group;
+            grade_car_performance(cars + group_offset, NUM_CARS, sorted_indexes[group]);
+            for (size_t i = 0; i < NUM_CARS; ++i) {
+                size_t half = NUM_CARS / 2;
+                new_nns[group][i] = nn_average(nns[group_offset + sorted_indexes[group][i/half]], nns[group_offset + sorted_indexes[group][i%half]]);
+            }
+            for (size_t i = 0; i < NUM_CARS; ++i) {
+                nn_delete(nns[group_offset + i]);
+                nns[group_offset + i] = new_nns[group][i];
+            }
         }
         next = true;
         if (iterations++ > SIZE_MAX) {
@@ -258,8 +268,12 @@ void *gen_thread(void* c) {
 int main(void) {
     srand(clock());
 
-    nn_t *nns[NUM_CARS];
-    size_t layer_sizes[5] = {INPUT_LAYER_SIZE, 512, 512, 256, OUTPUT_LAYER_SIZE};
+    Color group_colors[NUM_GROUPS] = {RED, GREEN};
+    nn_t *nns[NUM_GROUPS][NUM_CARS];
+    size_t layer_sizes[NUM_GROUPS][NUM_LAYERS] = {
+        {INPUT_LAYER_SIZE, 64, 256, 128, OUTPUT_LAYER_SIZE},
+        {INPUT_LAYER_SIZE, 64, 36, 24, OUTPUT_LAYER_SIZE},
+    };
     char buffer[256];
 
 
@@ -280,17 +294,19 @@ int main(void) {
     track_image = track_images[track_num];
     track = tracks[track_num];
     track_colors = track_colors_arr[track_num];
-    car_t cars[NUM_CARS];
-    pthread_mutex_t locks[NUM_CARS];
-    for (size_t i = 0; i < NUM_CARS; ++i) {
-        nns[i] = nn_init(4, layer_sizes);
-        pthread_mutex_init(&locks[i], NULL);
+    car_t cars[NUM_GROUPS][NUM_CARS];
+    //pthread_mutex_t locks[NUM_GROUPS][NUM_CARS];
+    for (size_t group = 0; group < NUM_GROUPS; ++group) {
+        for (size_t i = 0; i < NUM_CARS; ++i) {
+            nns[group][i] = nn_init(NUM_LAYERS, layer_sizes[group]);
+            //pthread_mutex_init(&locks[i], NULL);
+        }
     }
     pthread_t driver_thread;
     gen_thread_ctx_t ctx;
-    ctx.cars = cars;
-    ctx.nns = nns;
-    ctx.locks = locks;
+    ctx.cars = (car_t*) cars;
+    ctx.nns = (nn_t**) nns;
+    //ctx.locks = locks;
     pthread_create(&driver_thread, NULL, gen_thread, (void*) &ctx);
     dt = 1.0f / targetFPS;
     while(!WindowShouldClose()) {
@@ -320,15 +336,17 @@ int main(void) {
             track_colors = LoadImageColors(track_image);
         }
         bool kill = IsKeyPressed(KEY_SPACE);
-        for (size_t i = 0; i < NUM_CARS; ++i) {
-            if (kill) cars[i].crashed = true;
-            Rectangle car_shape = {
-                .height = 10,
-                .width = 10,
-                .x = cars[i].pos.x-5,
-                .y = cars[i].pos.y-5,
-            };
-            DrawRectangleRec(car_shape, RED);
+        for (size_t group = 0; group < NUM_GROUPS; ++group) {
+            for (size_t i = 0; i < NUM_CARS; ++i) {
+                if (kill) cars[group][i].crashed = true;
+                Rectangle car_shape = {
+                    .height = 10,
+                    .width = 10,
+                    .x = cars[group][i].pos.x-5,
+                    .y = cars[group][i].pos.y-5,
+                };
+                DrawRectangleRec(car_shape, group_colors[group]);
+            }
         }
         time_elapsed += dt;
         sprintf(buffer, "%.1f FPS", 1/dt);
