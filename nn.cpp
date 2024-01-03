@@ -26,11 +26,11 @@ layer_t make_input_layer(size_t layer_size) {
     return me;
 }
 
-nn_t *nn_average(nn_t *nn_a, nn_t *nn_b) {
+nn_t* nn_average(nn_t* nn_a, nn_t* nn_b) {
     assert(nn_a->num_layers == nn_b->num_layers);
-    nn_t *avg = (nn_t*) malloc(sizeof(nn_t));
+    nn_t* avg = (nn_t*)malloc(sizeof(nn_t));
     avg->num_layers = nn_a->num_layers;
-    avg->layers = (layer_t*) malloc(sizeof(layer_t) * avg->num_layers);
+    avg->layers = (layer_t*)malloc(sizeof(layer_t) * avg->num_layers);
     avg->layers[0] = make_input_layer(nn_a->layers[0].a->rows);
     for (size_t i = 1; i < avg->num_layers; ++i) {
         avg->layers[i] = make_layer(nn_a->layers[i].a->rows, nn_a->layers[i - 1].a->rows, false);
@@ -41,10 +41,10 @@ nn_t *nn_average(nn_t *nn_a, nn_t *nn_b) {
     return avg;
 }
 
-nn_t *nn_init(size_t num_layers, size_t *layer_sizes) {
-    nn_t *me = (nn_t*) malloc(sizeof(nn_t));
+nn_t* nn_init(size_t num_layers, size_t* layer_sizes) {
+    nn_t* me = (nn_t*)malloc(sizeof(nn_t));
     me->num_layers = num_layers;
-    me->layers = (layer_t*) malloc(sizeof(layer_t) * num_layers);
+    me->layers = (layer_t*)malloc(sizeof(layer_t) * num_layers);
     me->layers[0] = make_input_layer(layer_sizes[0]);
     for (size_t i = 1; i < num_layers; ++i) {
         me->layers[i] = make_layer(layer_sizes[i], layer_sizes[i - 1], true);
@@ -52,7 +52,7 @@ nn_t *nn_init(size_t num_layers, size_t *layer_sizes) {
     return me;
 }
 
-void nn_delete(nn_t *me) {
+void nn_delete(nn_t* me) {
     for (size_t i = 0; i < me->num_layers; ++i) {
         matrix_delete(me->layers[i].a);
         matrix_delete(me->layers[i].weights);
@@ -60,4 +60,3 @@ void nn_delete(nn_t *me) {
     }
     free(me);
 }
-
