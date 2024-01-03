@@ -21,14 +21,11 @@ void matrix_multiply(matrix_t* a, matrix_t* b, matrix_t* c) {
     assert(c->rows == a->rows);
     assert(c->cols == b->cols);
     for (size_t i = 0; i < c->rows; ++i) {
-        for (size_t j = 0; j < c->cols; ++j) {
-            MATRIX_AT(c, i, j) = 0.0f;
-        }
+        float result = 0.0f;
         for (size_t k = 0; k < b->rows; ++k) {
-            for (size_t j = 0; j < c->cols; ++j) {
-                MATRIX_AT(c, i, j) += MATRIX_AT(a, i, k) * MATRIX_AT(b, k, j);
-            }
+            result += MATRIX_AT(a, i, k) * b->data[k];
         }
+        c->data[i] = result;
     }
 }
 

@@ -10,7 +10,7 @@ typedef struct matrix_s {
     float *gpuData;
     size_t rows;
     size_t cols;
-    static constexpr float MUTATION_MAX = 0.01f;
+    static constexpr float MUTATION_MAX = 0.03f;
 } matrix_t;
 
 struct nn_s;
@@ -22,6 +22,7 @@ void matrix_sigmoid(matrix_t *a);
 void matrix_randomize(matrix_t *m);
 void matrix_average(matrix_t *a, matrix_t *b, matrix_t *c);
 void matrix_delete(matrix_t *m);
+void matrix_multiply_and_add(matrix_t *a, matrix_t *b, matrix_t *biases, matrix_t *c);
 
 void nn_forward(struct nn_s *nn);
 

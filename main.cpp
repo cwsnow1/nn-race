@@ -16,12 +16,12 @@ constexpr bool controlSpeed = true;
 constexpr bool steering = false;
 constexpr bool drawRays = true;
 
-constexpr size_t cNumCars = 20;
+constexpr size_t cNumCars = 50;
 constexpr size_t cNumLayers = 5;
 constexpr size_t cNumGroups = 1;
 constexpr size_t cMaxNumGroups = 2;
 constexpr float cSightDistance = 100.0f;
-constexpr float cEpsilon = 0.2f;
+constexpr float cEpsilon = 0.3f;
 constexpr size_t cMaxSteps = static_cast<size_t>(cSightDistance / cEpsilon);
 constexpr int cScreenWidth = 1920;
 constexpr int cScreenHeight = 1080;
@@ -262,7 +262,7 @@ int main(void) {
     Color group_colors[cMaxNumGroups] = { RED, GREEN };
     nn_t* nns[cNumGroups][cNumCars];
     size_t layer_sizes[cMaxNumGroups][cNumLayers] = {
-        {cInputLayerSize, 128, 512, 256, cOutputLayerSize},
+        {cInputLayerSize, 128, 256, 256, cOutputLayerSize},
         {cInputLayerSize, 64, 256, 128, cOutputLayerSize},
     };
 
@@ -335,6 +335,7 @@ int main(void) {
                 car_shape.height = 10;
                 if constexpr (drawRays) {
                     for (auto ray : cars[group][i].rays) {
+                        if (ray.x == 0) continue;
                         DrawLine(static_cast<int>(cars[group][i].pos.x), static_cast<int>(cars[group][i].pos.y), static_cast<int>(ray.x), static_cast<int>(ray.y), GREEN);
                     }
                 }

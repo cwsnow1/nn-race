@@ -28,7 +28,7 @@ __global__ void myKernel(const float* a, const float* b, const float *biases, fl
     for (unsigned int i = 0; i < a_cols; ++i) {
         result += a[index * a_cols + i] * b[index];
     }
-    c[index] = result;
+    c[index] = (2 / (1 + expf(-result))) - 1;
 }
 
 matrix_t *matrix_make(int rows, int cols) {
@@ -54,7 +54,7 @@ void matrix_average(matrix_t *a, matrix_t *b, matrix_t *c) {
     assert(c->rows == a->rows);
     assert(c->cols == a->cols);
     for (size_t i = 0; i < a->rows * a->cols; ++i) {
-        float mutation = ((((float) rand() / (float) RAND_MAX) * 2.0f) - 1.0f) * MUTATION_MAX;
+        float mutation = ((((float) rand() / (float) RAND_MAX) * 2.0f) - 1.0f) * matrix_t::MUTATION_MAX;
         c->data[i] = (a->data[i] + b->data[i]) / 2.0f + mutation;
     }
     HIP_CHECK(hipMemcpy(c->gpuData, c->data, c->rows * c->cols * sizeof(float), hipMemcpyHostToDevice));
