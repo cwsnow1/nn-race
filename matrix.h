@@ -5,13 +5,12 @@
 
 #define MATRIX_CPU
 
-#define MUTATION_MAX    (0.01f)
-
 typedef struct matrix_s {
     float *data;
     float *gpuData;
     size_t rows;
     size_t cols;
+    static constexpr float MUTATION_MAX = 0.01f;
 } matrix_t;
 
 struct nn_s;

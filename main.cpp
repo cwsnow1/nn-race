@@ -13,14 +13,14 @@
 #include "matrix.h"
 
 constexpr bool controlSpeed = true;
-constexpr bool steering = true;
+constexpr bool steering = false;
 constexpr bool drawRays = true;
 
 constexpr size_t cNumCars = 20;
 constexpr size_t cNumLayers = 5;
 constexpr size_t cNumGroups = 1;
 constexpr size_t cMaxNumGroups = 2;
-constexpr float cSightDistance = 400.0f;
+constexpr float cSightDistance = 100.0f;
 constexpr float cEpsilon = 0.2f;
 constexpr size_t cMaxSteps = static_cast<size_t>(cSightDistance / cEpsilon);
 constexpr int cScreenWidth = 1920;
